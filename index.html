@@ -452,12 +452,29 @@ function levenshtein(a, b) {
   return dp[m][n];
 }
 
+// OCRで読めたテキスト全体の中から「型式らしい部分」を探して照合する。
+// ラベルにはメーカー名・ロット番号など型式以外の文字も大量に写り込むため、
+// テキスト全体との距離ではなく、(1)単語ごとの距離 と (2)文中の部分一致スキャン の最小値を使う。
 function bestDialyzerMatches(rawText, topN = 3) {
-  const target = normalize(rawText);
-  if (!target) return [];
+  const fullNorm = normalize(rawText);
+  if (!fullNorm) return [];
+  const tokens = rawText.split(/[\s\r\n]+/).map(normalize).filter((t) => t.length >= 3);
   const scored = DIALYZER_LIST.map((entry) => {
     const candidates = [entry.model, ...(entry.aliases || [])].map(normalize);
-    const dist = Math.min(...candidates.map((c) => levenshtein(target, c)));
+    let dist = Infinity;
+    for (const c of candidates) {
+      if (fullNorm.includes(c)) { dist = 0; break; }
+      // 型式が前後の文字とつながって読まれた場合に備え、同じ長さの窓をずらしながら比較する
+      for (let i = 0; i + c.length <= fullNorm.length; i++) {
+        dist = Math.min(dist, levenshtein(fullNorm.substr(i, c.length), c));
+      }
+      for (const t of tokens) {
+        dist = Math.min(dist, levenshtein(t, c));
+      }
+      if (fullNorm.length < c.length) {
+        dist = Math.min(dist, levenshtein(fullNorm, c));
+      }
+    }
     return { model: entry.model, dist };
   });
   scored.sort((a, b) => a.dist - b.dist);
@@ -1000,8 +1017,10 @@ document.addEventListener("DOMContentLoaded", () => {
     psm: "6",
     cropBox: { left: 0.08, top: 0.30, width: 0.84, height: 0.40 },
     extractKey: (text) => {
+      // 院内リストには1文字違いの型式が多い（VPS-15HA/18HA等）ため、
+      // ライブスキャンの自動確定は完全一致（dist 0）のみ。惜しい読み取りは確定させない。
       const matches = bestDialyzerMatches(text, 1);
-      if (matches.length === 0 || matches[0].dist > 4) return null;
+      if (matches.length === 0 || matches[0].dist !== 0) return null;
       return matches[0].model;
     },
     onStable: (best, text) => {
