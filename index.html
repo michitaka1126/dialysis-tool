@@ -1104,11 +1104,15 @@ document.addEventListener("DOMContentLoaded", () => {
       if (normalize(text)) wireDialyzerCandidates(text);
     },
     extractKey: (text) => {
-      // 院内リストには1文字違いの型式が多い（VPS-15HA/18HA等）ため、
-      // ライブスキャンの自動確定は完全一致（dist 0）のみ。惜しい読み取りは確定させない。
-      const matches = bestDialyzerMatches(text, 1);
-      if (matches.length === 0 || matches[0].dist !== 0) return null;
-      return matches[0].model;
+      // 完全一致のみだと確定率が低すぎたため、1文字違いまで許容する。
+      // ただし院内リストには1文字違いの型式が多い（VPS-15HA/18HA等）ため、
+      // 2位の候補と距離差がない（どちらとも取れる）読み取りは確定させない。
+      const matches = bestDialyzerMatches(text, 2);
+      if (matches.length === 0) return null;
+      const top = matches[0], second = matches[1];
+      if (top.dist === 0) return top.model;
+      if (top.dist === 1 && (!second || second.dist > top.dist)) return top.model;
+      return null;
     },
     onStable: (best, text) => {
       document.getElementById("measuredDialyzer").value = best;
