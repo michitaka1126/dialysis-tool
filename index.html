@@ -1,0 +1,833 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
+<title>透析条件チェックツール（確認補助用）</title>
+<style>
+:root {
+  --color-bg: #f4f6f8;
+  --color-card: #ffffff;
+  --color-text: #1a1a1a;
+  --color-primary: #1d5fa3;
+  --color-danger: #b3261e;
+  --color-ok-bg: #e6f4ea;
+  --color-ok-text: #1e7d32;
+  --color-ng-bg: #fdecea;
+  --color-ng-text: #b3261e;
+  --color-border: #d7dde3;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: "Hiragino Sans", "Yu Gothic", system-ui, sans-serif;
+  background: var(--color-bg);
+  color: var(--color-text);
+  line-height: 1.6;
+  padding-bottom: 40px;
+}
+
+.app-header {
+  background: var(--color-primary);
+  color: #fff;
+  padding: 16px 20px;
+}
+.app-header h1 { margin: 0; font-size: 1.3rem; }
+.app-header .subtitle { margin: 4px 0 0; font-size: 0.85rem; opacity: 0.9; }
+
+.disclaimer {
+  background: #fff3cd;
+  border: 1px solid #e0a800;
+  color: #664d03;
+  padding: 12px 16px;
+  margin: 12px;
+  border-radius: 8px;
+  font-size: 0.85rem;
+}
+
+main {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 0 12px;
+}
+
+.card {
+  background: var(--color-card);
+  border: 1px solid var(--color-border);
+  border-radius: 10px;
+  padding: 16px;
+  margin-bottom: 16px;
+}
+.card h2 { margin-top: 0; font-size: 1.05rem; }
+
+label {
+  display: block;
+  font-size: 0.85rem;
+  font-weight: bold;
+  margin: 10px 0 4px;
+}
+
+input[type="number"],
+input[type="text"],
+select {
+  width: 100%;
+  padding: 10px;
+  font-size: 1rem;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+  background: #fff;
+}
+
+.hidden { display: none !important; }
+
+.btn {
+  display: inline-block;
+  width: 100%;
+  padding: 12px;
+  margin-top: 10px;
+  font-size: 1rem;
+  border: none;
+  border-radius: 8px;
+  background: #e2e8f0;
+  color: var(--color-text);
+  cursor: pointer;
+}
+.btn-primary { background: var(--color-primary); color: #fff; font-weight: bold; }
+.btn-secondary { background: #dbe6f0; }
+.btn-danger { background: #f6d6d3; color: var(--color-danger); }
+
+.history-actions { display: flex; gap: 8px; }
+.history-actions .btn { margin-top: 0; }
+
+.preview-wrap { margin-top: 10px; text-align: center; }
+.preview-img {
+  max-width: 100%;
+  max-height: 260px;
+  border: 1px solid var(--color-border);
+  border-radius: 6px;
+}
+
+.ocr-status {
+  margin-top: 8px;
+  font-size: 0.85rem;
+  color: #555;
+}
+
+.video-wrap {
+  position: relative;
+  margin-top: 10px;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #000;
+}
+.live-video {
+  width: 100%;
+  max-height: 320px;
+  display: block;
+}
+.live-badge {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 10px;
+  text-align: center;
+  font-size: 1.05rem;
+  font-weight: bold;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.55);
+}
+.live-badge.ok { background: rgba(30, 125, 50, 0.85); }
+.live-badge.ng { background: rgba(179, 38, 30, 0.85); }
+
+.candidates {
+  margin-top: 8px;
+  font-size: 0.85rem;
+}
+.candidates .candidate-item {
+  display: inline-block;
+  margin: 2px 4px 2px 0;
+  padding: 4px 8px;
+  background: #eef2f6;
+  border-radius: 12px;
+  cursor: pointer;
+}
+
+.result-area { margin-top: 12px; }
+.result-row {
+  padding: 10px;
+  border-radius: 6px;
+  margin-bottom: 8px;
+  font-size: 0.95rem;
+}
+.result-row.ok { background: var(--color-ok-bg); color: var(--color-ok-text); }
+.result-row.ng { background: var(--color-ng-bg); color: var(--color-ng-text); font-weight: bold; }
+
+.result-overall {
+  text-align: center;
+  font-size: 1.2rem;
+  font-weight: bold;
+  padding: 14px;
+  border-radius: 8px;
+}
+.result-overall.ok { background: var(--color-ok-text); color: #fff; }
+.result-overall.ng { background: var(--color-ng-text); color: #fff; }
+
+.table-wrap { overflow-x: auto; }
+table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
+th, td { border: 1px solid var(--color-border); padding: 6px 8px; text-align: left; white-space: nowrap; }
+th { background: #eef2f6; }
+
+.hint { font-size: 0.8rem; color: #555; }
+
+.app-footer {
+  text-align: center;
+  font-size: 0.75rem;
+  color: #777;
+  margin-top: 24px;
+}
+</style>
+</head>
+<body>
+
+<header class="app-header">
+  <h1>透析条件チェックツール</h1>
+  <p class="subtitle">医師指示と実機設定の照合を補助するツールです</p>
+</header>
+
+<div class="disclaimer" role="alert">
+  <strong>注意：</strong>
+  本ツールは確認作業の補助を目的とした院内独自ツールであり、医療機器ではありません。
+  OCR（画像文字認識）は誤読する可能性があります。認識結果は必ず撮影画像および実機表示と目視で照合し、
+  最終判断はご自身の目視確認で行ってください。
+  <br>
+  <strong>個人情報（患者氏名・ID等）は入力しないでください。</strong>データは端末内（ブラウザ）にのみ保存されます。
+</div>
+
+<main>
+
+  <!-- STEP 1: 医師指示の入力 -->
+  <section class="card">
+    <h2>1. 医師指示の入力</h2>
+
+    <label for="orderedFlow">血液流量 指示値 (mL/min)</label>
+    <input type="number" id="orderedFlow" inputmode="numeric" placeholder="例: 200">
+
+    <label for="flowTolerance">許容差 (±mL/min)</label>
+    <input type="number" id="flowTolerance" inputmode="numeric" value="0" min="0">
+
+    <label for="orderedDialyzer">ダイアライザー型式 指示</label>
+    <select id="orderedDialyzer">
+      <option value="">-- 選択してください --</option>
+    </select>
+  </section>
+
+  <!-- STEP 2: 血液流量の実測 -->
+  <section class="card">
+    <h2>2. 血液流量の実測（かざす／撮影／手入力）</h2>
+
+    <button id="flowScanBtn" class="btn btn-primary">🎥 カメラをかざしてスキャン</button>
+    <button id="flowScanStopBtn" class="btn btn-secondary hidden">■ スキャン終了</button>
+    <div id="flowVideoWrap" class="video-wrap hidden">
+      <video id="flowVideo" class="live-video" playsinline muted autoplay></video>
+      <div id="flowLiveBadge" class="live-badge"></div>
+    </div>
+    <div id="flowScanUnsupported" class="hint hidden">
+      この開き方ではライブスキャンが使えません（HTTPS環境が必要です）。下の「静止画で撮影」または手入力をご利用ください。
+    </div>
+
+    <input type="file" id="flowPhotoInput" accept="image/*" capture="environment" class="hidden">
+    <button id="flowPhotoBtn" class="btn">📷 静止画で撮影（代替）</button>
+    <div id="flowPhotoPreviewWrap" class="preview-wrap hidden">
+      <img id="flowPhotoPreview" class="preview-img" alt="血流量撮影プレビュー">
+    </div>
+    <div id="flowOcrStatus" class="ocr-status hidden"></div>
+
+    <label for="measuredFlow">実測値 (mL/min) ※認識結果は必ず修正・確認してください</label>
+    <input type="number" id="measuredFlow" inputmode="numeric" placeholder="例: 200">
+  </section>
+
+  <!-- STEP 3: ダイアライザー型式の実測 -->
+  <section class="card">
+    <h2>3. ダイアライザー型式の実測（かざす／撮影／手入力）</h2>
+
+    <button id="dialyzerScanBtn" class="btn btn-primary">🎥 カメラをかざしてスキャン</button>
+    <button id="dialyzerScanStopBtn" class="btn btn-secondary hidden">■ スキャン終了</button>
+    <div id="dialyzerVideoWrap" class="video-wrap hidden">
+      <video id="dialyzerVideo" class="live-video" playsinline muted autoplay></video>
+      <div id="dialyzerLiveBadge" class="live-badge"></div>
+    </div>
+    <div id="dialyzerScanUnsupported" class="hint hidden">
+      この開き方ではライブスキャンが使えません（HTTPS環境が必要です）。下の「静止画で撮影」または手入力をご利用ください。
+    </div>
+
+    <input type="file" id="dialyzerPhotoInput" accept="image/*" capture="environment" class="hidden">
+    <button id="dialyzerPhotoBtn" class="btn">📷 静止画で撮影（代替）</button>
+    <div id="dialyzerPhotoPreviewWrap" class="preview-wrap hidden">
+      <img id="dialyzerPhotoPreview" class="preview-img" alt="ダイアライザー撮影プレビュー">
+    </div>
+    <div id="dialyzerOcrStatus" class="ocr-status hidden"></div>
+    <div id="dialyzerCandidates" class="candidates hidden"></div>
+
+    <label for="measuredDialyzer">実測型式 ※認識結果は必ず修正・確認してください</label>
+    <select id="measuredDialyzer">
+      <option value="">-- 選択してください --</option>
+    </select>
+  </section>
+
+  <!-- STEP 4: 照合結果 -->
+  <section class="card">
+    <h2>4. 照合結果</h2>
+    <button id="checkBtn" class="btn btn-primary">照合する</button>
+
+    <div id="resultArea" class="result-area hidden">
+      <div id="flowResult" class="result-row"></div>
+      <div id="dialyzerResult" class="result-row"></div>
+      <div id="overallResult" class="result-overall"></div>
+    </div>
+
+    <label for="checkNote">メモ（任意・個人情報は入力しないこと。例: ベッド番号のみ等）</label>
+    <input type="text" id="checkNote" placeholder="例: 3号機">
+
+    <button id="saveHistoryBtn" class="btn hidden">この結果を履歴に記録</button>
+  </section>
+
+  <!-- 履歴 -->
+  <section class="card">
+    <h2>チェック履歴（この端末のブラウザ内のみに保存）</h2>
+    <div class="history-actions">
+      <button id="exportCsvBtn" class="btn btn-secondary">CSV書き出し</button>
+      <button id="clearHistoryBtn" class="btn btn-danger">履歴を全削除</button>
+    </div>
+    <div class="table-wrap">
+      <table id="historyTable">
+        <thead>
+          <tr>
+            <th>日時</th><th>メモ</th>
+            <th>流量指示</th><th>流量実測</th><th>流量判定</th>
+            <th>型式指示</th><th>型式実測</th><th>型式判定</th>
+            <th>総合</th>
+          </tr>
+        </thead>
+        <tbody id="historyBody"></tbody>
+      </table>
+    </div>
+  </section>
+
+  <!-- ダイアライザー型式リストの管理 -->
+  <section class="card">
+    <h2>院内採用ダイアライザー型式リストの編集</h2>
+    <p class="hint">
+      型式の選択肢は、このファイル末尾の <code>&lt;script&gt;</code> 内にある
+      <code>DIALYZER_LIST</code> を編集することで追加・変更できます。
+      現在はサンプル値が入っています。院内の実際の採用品に置き換えてください。
+    </p>
+  </section>
+
+</main>
+
+<footer class="app-footer">
+  <p>院内利用ツール（個人開発） / 患者に対する診断・治療機器ではありません</p>
+</footer>
+
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js"></script>
+<script>
+"use strict";
+
+/* ============================================================
+ * 院内採用ダイアライザー型式リスト
+ * ここはサンプル値です。実際の院内採用品に置き換えてください。
+ * 表記ゆれ対策として、OCR誤読しやすい類似表記があれば
+ * aliases に追加しておくとマッチ精度が上がります。
+ * ============================================================ */
+const DIALYZER_LIST = [
+  { model: "APS-25SA", aliases: ["APS25SA"] },
+  { model: "VPS-21HA", aliases: ["VPS21HA"] },
+  { model: "VPS-18HA", aliases: ["VPS18HA"] },
+  { model: "VPS-15HA", aliases: ["VPS15HA"] },
+  { model: "VPS-13HA", aliases: ["VPS13HA"] },
+  { model: "VPS-11HA", aliases: ["VPS11HA"] },
+  { model: "NF-2.1HS", aliases: ["NF2.1HS", "NF-21HS"] },
+  { model: "NF-1.8HS", aliases: ["NF1.8HS", "NF-18HS"] },
+  { model: "NF-1.6HS", aliases: ["NF1.6HS", "NF-16HS"] },
+  { model: "PES-21Eα", aliases: ["PES-21Ea", "PES21Ea"] },
+  { model: "PES-19Eα", aliases: ["PES-19Ea", "PES19Ea"] },
+  { model: "PES-15Eα", aliases: ["PES-15Ea", "PES15Ea"] },
+  { model: "NV-21U", aliases: ["NV21U"] },
+  { model: "NV-18U", aliases: ["NV18U"] },
+  { model: "FB-250Uβeco", aliases: ["FB-250UBeco", "FB250Ubeco"] },
+  { model: "FB-210Uβeco", aliases: ["FB-210UBeco", "FB210Ubeco"] },
+  { model: "FB-190Uβeco", aliases: ["FB-190UBeco", "FB190Ubeco"] },
+  { model: "FB-150Uβeco", aliases: ["FB-150UBeco", "FB150Ubeco"] },
+  { model: "FB-110Uβeco", aliases: ["FB-110UBeco", "FB110Ubeco"] },
+];
+
+/* ============================================================
+ * ユーティリティ
+ * ============================================================ */
+function normalize(str) {
+  if (!str) return "";
+  return str
+    .toString()
+    .toUpperCase()
+    .replace(/[\s\-　]/g, "") // 空白・ハイフン除去
+    .replace(/[Ａ-Ｚａ-ｚ０-９]/g, (ch) =>
+      String.fromCharCode(ch.charCodeAt(0) - 0xfee0)
+    ); // 全角→半角
+}
+
+function levenshtein(a, b) {
+  const m = a.length, n = b.length;
+  const dp = Array.from({ length: m + 1 }, () => new Array(n + 1).fill(0));
+  for (let i = 0; i <= m; i++) dp[i][0] = i;
+  for (let j = 0; j <= n; j++) dp[0][j] = j;
+  for (let i = 1; i <= m; i++) {
+    for (let j = 1; j <= n; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      dp[i][j] = Math.min(
+        dp[i - 1][j] + 1,
+        dp[i][j - 1] + 1,
+        dp[i - 1][j - 1] + cost
+      );
+    }
+  }
+  return dp[m][n];
+}
+
+function bestDialyzerMatches(rawText, topN = 3) {
+  const target = normalize(rawText);
+  if (!target) return [];
+  const scored = DIALYZER_LIST.map((entry) => {
+    const candidates = [entry.model, ...(entry.aliases || [])].map(normalize);
+    const dist = Math.min(...candidates.map((c) => levenshtein(target, c)));
+    return { model: entry.model, dist };
+  });
+  scored.sort((a, b) => a.dist - b.dist);
+  return scored.slice(0, topN);
+}
+
+/* ============================================================
+ * ダイアライザー選択肢の初期化
+ * ============================================================ */
+function populateDialyzerSelects() {
+  const selects = [
+    document.getElementById("orderedDialyzer"),
+    document.getElementById("measuredDialyzer"),
+  ];
+  selects.forEach((sel) => {
+    DIALYZER_LIST.forEach((entry) => {
+      const opt = document.createElement("option");
+      opt.value = entry.model;
+      opt.textContent = entry.model;
+      sel.appendChild(opt);
+    });
+  });
+}
+
+/* ============================================================
+ * OCRワーカー（使い回すことで2回目以降の認識を高速化）
+ * ============================================================ */
+let ocrWorkerPromise = null;
+function getOcrWorker() {
+  if (!ocrWorkerPromise) {
+    ocrWorkerPromise = Tesseract.createWorker("eng");
+  }
+  return ocrWorkerPromise;
+}
+
+async function recognizeWithWhitelist(file, whitelist) {
+  const worker = await getOcrWorker();
+  await worker.setParameters({ tessedit_char_whitelist: whitelist });
+  const { data } = await worker.recognize(file);
+  return data.text || "";
+}
+
+/* ============================================================
+ * 撮影 → プレビュー表示 → OCR共通処理
+ * ============================================================ */
+function wirePhotoCapture({ btnId, inputId, previewWrapId, previewImgId, statusId, onOcrDone, whitelist }) {
+  const btn = document.getElementById(btnId);
+  const input = document.getElementById(inputId);
+  const previewWrap = document.getElementById(previewWrapId);
+  const previewImg = document.getElementById(previewImgId);
+  const status = document.getElementById(statusId);
+
+  btn.addEventListener("click", () => input.click());
+
+  input.addEventListener("change", async () => {
+    const file = input.files && input.files[0];
+    if (!file) return;
+
+    const url = URL.createObjectURL(file);
+    previewImg.src = url;
+    previewWrap.classList.remove("hidden");
+
+    status.classList.remove("hidden");
+    status.textContent = "文字認識中...(端末内で処理しています。外部には送信されません)";
+
+    try {
+      const text = await recognizeWithWhitelist(file, whitelist);
+      status.textContent = "認識結果: " + text.trim().replace(/\s+/g, " ") + "（必ず目視で確認してください）";
+      onOcrDone(text);
+    } catch (err) {
+      status.textContent = "文字認識に失敗しました。手入力してください。（" + err.message + "）";
+    }
+  });
+}
+
+/* ============================================================
+ * OCR結果の反映
+ * ============================================================ */
+function extractFlowNumber(text) {
+  const digitsOnly = text.replace(/[^\d]/g, " ").trim().split(/\s+/).filter(Boolean);
+  if (digitsOnly.length === 0) return "";
+  // 最も桁数の多い数字列を血流量とみなす（画面上の主表示を想定）
+  digitsOnly.sort((a, b) => b.length - a.length);
+  return digitsOnly[0];
+}
+
+function wireDialyzerCandidates(text) {
+  const wrap = document.getElementById("dialyzerCandidates");
+  const matches = bestDialyzerMatches(text);
+  wrap.innerHTML = "";
+  if (matches.length === 0) {
+    wrap.classList.add("hidden");
+    return;
+  }
+  wrap.classList.remove("hidden");
+  matches.forEach((m) => {
+    const span = document.createElement("span");
+    span.className = "candidate-item";
+    span.textContent = m.model;
+    span.addEventListener("click", () => {
+      document.getElementById("measuredDialyzer").value = m.model;
+    });
+    wrap.appendChild(span);
+  });
+}
+
+/* ============================================================
+ * ライブスキャン（カメラをかざしっぱなしにして継続的にOCR・自動判定）
+ * HTTPS（secure context）でのみ動作する。file://等では自動的に無効化し、
+ * 静止画撮影/手入力にフォールバックする。
+ * ============================================================ */
+const activeScanControllers = [];
+
+function wireLiveScan({ scanBtnId, stopBtnId, videoWrapId, videoId, badgeId, unsupportedId, whitelist, processReading }) {
+  const scanBtn = document.getElementById(scanBtnId);
+  const stopBtn = document.getElementById(stopBtnId);
+  const videoWrap = document.getElementById(videoWrapId);
+  const video = document.getElementById(videoId);
+  const badge = document.getElementById(badgeId);
+  const unsupported = document.getElementById(unsupportedId);
+
+  if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || !window.isSecureContext) {
+    scanBtn.classList.add("hidden");
+    unsupported.classList.remove("hidden");
+    return;
+  }
+
+  const canvas = document.createElement("canvas");
+  const state = { stream: null, scanning: false };
+
+  function stop() {
+    state.scanning = false;
+    if (state.stream) {
+      state.stream.getTracks().forEach((t) => t.stop());
+      state.stream = null;
+    }
+    videoWrap.classList.add("hidden");
+    stopBtn.classList.add("hidden");
+    scanBtn.classList.remove("hidden");
+  }
+
+  async function grabFrameBlob() {
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    if (!canvas.width || !canvas.height) return null;
+    canvas.getContext("2d").drawImage(video, 0, 0, canvas.width, canvas.height);
+    return new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
+  }
+
+  async function loop() {
+    while (state.scanning) {
+      try {
+        const blob = await grabFrameBlob();
+        if (blob) {
+          const text = await recognizeWithWhitelist(blob, whitelist);
+          const result = processReading(text) || { display: "読み取り中...", matched: null };
+          badge.textContent = result.display;
+          badge.className = "live-badge " + (result.matched === true ? "ok" : result.matched === false ? "ng" : "");
+        }
+      } catch (err) {
+        badge.textContent = "認識エラー（再試行中）";
+        badge.className = "live-badge";
+      }
+      await new Promise((r) => setTimeout(r, 300));
+    }
+  }
+
+  scanBtn.addEventListener("click", async () => {
+    try {
+      state.stream = await navigator.mediaDevices.getUserMedia({
+        video: { facingMode: { ideal: "environment" } },
+        audio: false,
+      });
+      video.srcObject = state.stream;
+      videoWrap.classList.remove("hidden");
+      scanBtn.classList.add("hidden");
+      stopBtn.classList.remove("hidden");
+      badge.textContent = "読み取り中...";
+      badge.className = "live-badge";
+      state.scanning = true;
+      loop();
+    } catch (err) {
+      unsupported.textContent = "カメラを起動できませんでした（" + err.message + "）。静止画撮影または手入力をご利用ください。";
+      unsupported.classList.remove("hidden");
+    }
+  });
+
+  stopBtn.addEventListener("click", stop);
+
+  activeScanControllers.push({ stop, isScanning: () => state.scanning });
+}
+
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) {
+    activeScanControllers.forEach((c) => { if (c.isScanning()) c.stop(); });
+  }
+});
+
+/* ============================================================
+ * 照合処理
+ * ============================================================ */
+function runCheck() {
+  const orderedFlow = parseFloat(document.getElementById("orderedFlow").value);
+  const tolerance = parseFloat(document.getElementById("flowTolerance").value) || 0;
+  const measuredFlow = parseFloat(document.getElementById("measuredFlow").value);
+  const orderedDialyzer = document.getElementById("orderedDialyzer").value;
+  const measuredDialyzer = document.getElementById("measuredDialyzer").value;
+
+  const resultArea = document.getElementById("resultArea");
+  const flowResultEl = document.getElementById("flowResult");
+  const dialyzerResultEl = document.getElementById("dialyzerResult");
+  const overallEl = document.getElementById("overallResult");
+
+  if (Number.isNaN(orderedFlow) || Number.isNaN(measuredFlow)) {
+    alert("血液流量の指示値・実測値を入力してください。");
+    return null;
+  }
+  if (!orderedDialyzer || !measuredDialyzer) {
+    alert("ダイアライザー型式の指示・実測を選択してください。");
+    return null;
+  }
+
+  const flowMatch = Math.abs(orderedFlow - measuredFlow) <= tolerance;
+  const dialyzerMatch = orderedDialyzer === measuredDialyzer;
+  const overallMatch = flowMatch && dialyzerMatch;
+
+  resultArea.classList.remove("hidden");
+
+  flowResultEl.className = "result-row " + (flowMatch ? "ok" : "ng");
+  flowResultEl.textContent =
+    (flowMatch ? "○ " : "× ") +
+    `血液流量: 指示 ${orderedFlow} mL/min ／ 実測 ${measuredFlow} mL/min（許容差±${tolerance}）`;
+
+  dialyzerResultEl.className = "result-row " + (dialyzerMatch ? "ok" : "ng");
+  dialyzerResultEl.textContent =
+    (dialyzerMatch ? "○ " : "× ") +
+    `ダイアライザー型式: 指示 ${orderedDialyzer} ／ 実測 ${measuredDialyzer}`;
+
+  overallEl.className = "result-overall " + (overallMatch ? "ok" : "ng");
+  overallEl.textContent = overallMatch
+    ? "○ 一致（念のため最終確認は目視で）"
+    : "× 不一致あり - 医師指示を再確認してください";
+
+  document.getElementById("saveHistoryBtn").classList.remove("hidden");
+
+  return {
+    timestamp: new Date().toISOString(),
+    note: document.getElementById("checkNote").value || "",
+    orderedFlow, measuredFlow, flowMatch,
+    orderedDialyzer, measuredDialyzer, dialyzerMatch,
+    overallMatch,
+  };
+}
+
+/* ============================================================
+ * 履歴（localStorage）
+ * ============================================================ */
+const HISTORY_KEY = "dialysisCheckHistory";
+
+function loadHistory() {
+  try {
+    return JSON.parse(localStorage.getItem(HISTORY_KEY)) || [];
+  } catch {
+    return [];
+  }
+}
+
+function saveHistory(list) {
+  localStorage.setItem(HISTORY_KEY, JSON.stringify(list));
+}
+
+function renderHistory() {
+  const body = document.getElementById("historyBody");
+  const list = loadHistory();
+  body.innerHTML = "";
+  list
+    .slice()
+    .reverse()
+    .forEach((rec) => {
+      const tr = document.createElement("tr");
+      const dt = new Date(rec.timestamp);
+      tr.innerHTML = `
+        <td>${dt.toLocaleString("ja-JP")}</td>
+        <td>${escapeHtml(rec.note)}</td>
+        <td>${rec.orderedFlow}</td>
+        <td>${rec.measuredFlow}</td>
+        <td>${rec.flowMatch ? "○" : "×"}</td>
+        <td>${escapeHtml(rec.orderedDialyzer)}</td>
+        <td>${escapeHtml(rec.measuredDialyzer)}</td>
+        <td>${rec.dialyzerMatch ? "○" : "×"}</td>
+        <td>${rec.overallMatch ? "○" : "×"}</td>
+      `;
+      body.appendChild(tr);
+    });
+}
+
+function escapeHtml(s) {
+  return (s || "").replace(/[&<>"']/g, (c) => ({
+    "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;",
+  }[c]));
+}
+
+function exportCsv() {
+  const list = loadHistory();
+  const header = ["日時","メモ","流量指示","流量実測","流量判定","型式指示","型式実測","型式判定","総合"];
+  const rows = list.map((rec) => [
+    new Date(rec.timestamp).toLocaleString("ja-JP"),
+    rec.note,
+    rec.orderedFlow, rec.measuredFlow, rec.flowMatch ? "一致" : "不一致",
+    rec.orderedDialyzer, rec.measuredDialyzer, rec.dialyzerMatch ? "一致" : "不一致",
+    rec.overallMatch ? "一致" : "不一致",
+  ]);
+  const csv = [header, ...rows]
+    .map((r) => r.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(","))
+    .join("\r\n");
+  const blob = new Blob(["﻿" + csv], { type: "text/csv" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `dialysis_check_history_${Date.now()}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+/* ============================================================
+ * 初期化
+ * ============================================================ */
+document.addEventListener("DOMContentLoaded", () => {
+  populateDialyzerSelects();
+  renderHistory();
+
+  wirePhotoCapture({
+    btnId: "flowPhotoBtn",
+    inputId: "flowPhotoInput",
+    previewWrapId: "flowPhotoPreviewWrap",
+    previewImgId: "flowPhotoPreview",
+    statusId: "flowOcrStatus",
+    whitelist: "0123456789",
+    onOcrDone: (text) => {
+      const num = extractFlowNumber(text);
+      if (num) document.getElementById("measuredFlow").value = num;
+    },
+  });
+
+  wirePhotoCapture({
+    btnId: "dialyzerPhotoBtn",
+    inputId: "dialyzerPhotoInput",
+    previewWrapId: "dialyzerPhotoPreviewWrap",
+    previewImgId: "dialyzerPhotoPreview",
+    statusId: "dialyzerOcrStatus",
+    whitelist: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-.",
+    onOcrDone: (text) => {
+      wireDialyzerCandidates(text);
+    },
+  });
+
+  wireLiveScan({
+    scanBtnId: "flowScanBtn",
+    stopBtnId: "flowScanStopBtn",
+    videoWrapId: "flowVideoWrap",
+    videoId: "flowVideo",
+    badgeId: "flowLiveBadge",
+    unsupportedId: "flowScanUnsupported",
+    whitelist: "0123456789",
+    processReading: (text) => {
+      const num = extractFlowNumber(text);
+      if (!num) return { display: "読み取り中...", matched: null };
+      document.getElementById("measuredFlow").value = num;
+      const ordered = parseFloat(document.getElementById("orderedFlow").value);
+      const tolerance = parseFloat(document.getElementById("flowTolerance").value) || 0;
+      if (Number.isNaN(ordered)) {
+        return { display: "認識値: " + num + " mL/min（指示値が未入力です）", matched: null };
+      }
+      const matched = Math.abs(ordered - parseFloat(num)) <= tolerance;
+      return { display: (matched ? "○ 一致 " : "× 不一致 ") + "認識値: " + num + " mL/min", matched };
+    },
+  });
+
+  wireLiveScan({
+    scanBtnId: "dialyzerScanBtn",
+    stopBtnId: "dialyzerScanStopBtn",
+    videoWrapId: "dialyzerVideoWrap",
+    videoId: "dialyzerVideo",
+    badgeId: "dialyzerLiveBadge",
+    unsupportedId: "dialyzerScanUnsupported",
+    whitelist: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-.",
+    processReading: (text) => {
+      const matches = bestDialyzerMatches(text, 1);
+      if (matches.length === 0 || matches[0].dist > 4) {
+        return { display: "読み取り中...", matched: null };
+      }
+      const best = matches[0].model;
+      document.getElementById("measuredDialyzer").value = best;
+      wireDialyzerCandidates(text);
+      const ordered = document.getElementById("orderedDialyzer").value;
+      if (!ordered) {
+        return { display: "認識候補: " + best + "（指示型式が未選択です）", matched: null };
+      }
+      const matched = ordered === best;
+      return { display: (matched ? "○ 一致 " : "× 不一致 ") + "認識候補: " + best, matched };
+    },
+  });
+
+  document.getElementById("checkBtn").addEventListener("click", () => {
+    runCheck();
+  });
+
+  document.getElementById("saveHistoryBtn").addEventListener("click", () => {
+    const rec = runCheck();
+    if (!rec) return;
+    const list = loadHistory();
+    list.push(rec);
+    saveHistory(list);
+    renderHistory();
+    document.getElementById("saveHistoryBtn").classList.add("hidden");
+  });
+
+  document.getElementById("exportCsvBtn").addEventListener("click", exportCsv);
+
+  document.getElementById("clearHistoryBtn").addEventListener("click", () => {
+    if (confirm("履歴を全て削除します。よろしいですか？")) {
+      saveHistory([]);
+      renderHistory();
+    }
+  });
+});
+</script>
+</body>
+</html>
