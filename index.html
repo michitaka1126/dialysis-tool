@@ -124,7 +124,8 @@ select {
 }
 .live-video {
   width: 100%;
-  max-height: 320px;
+  height: 240px;
+  object-fit: cover;
   display: block;
 }
 .live-badge {
@@ -141,6 +142,27 @@ select {
 }
 .live-badge.ok { background: rgba(30, 125, 50, 0.85); }
 .live-badge.ng { background: rgba(179, 38, 30, 0.85); }
+
+.scan-guide {
+  position: absolute;
+  border: 2px dashed #ffd60a;
+  border-radius: 6px;
+  pointer-events: none;
+  box-shadow: 0 0 0 999px rgba(0, 0, 0, 0.35);
+}
+.scan-guide::before {
+  content: attr(data-label);
+  position: absolute;
+  top: -22px;
+  left: 0;
+  color: #ffd60a;
+  font-size: 0.75rem;
+  font-weight: bold;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.8);
+  white-space: nowrap;
+}
+.scan-guide-flow { left: 10%; top: 35%; width: 80%; height: 30%; }
+.scan-guide-dialyzer { left: 8%; top: 30%; width: 84%; height: 40%; }
 
 .candidates {
   margin-top: 8px;
@@ -208,9 +230,40 @@ th { background: #eef2f6; }
 
 <main>
 
-  <!-- STEP 1: 医師指示の入力 -->
+  <!-- STEP 0: 本日の指示登録（全ベッド一括） -->
   <section class="card">
-    <h2>1. 医師指示の入力</h2>
+    <h2>0. 本日の指示登録（ベッド1〜15）</h2>
+    <p class="hint">
+      透析開始前に、各ベッドの医師指示をまとめて入力し「登録する」を押してください。
+      登録しておくと、巡回時は「1. ベッドを選択」でベッド番号を選ぶだけで指示が呼び出されます。
+      （この端末のブラウザ内にのみ保存されます。患者名は入力しないでください。）
+    </p>
+    <div class="table-wrap">
+      <table id="bedOrderTable">
+        <thead>
+          <tr>
+            <th>ベッド</th>
+            <th>血流量指示<br>(mL/min)</th>
+            <th>許容差<br>(±mL/min)</th>
+            <th>ダイアライザー型式</th>
+          </tr>
+        </thead>
+        <tbody id="bedOrderBody"></tbody>
+      </table>
+    </div>
+    <button id="saveBedOrdersBtn" class="btn btn-primary">登録する</button>
+    <button id="clearBedOrdersBtn" class="btn btn-danger">全ベッドの指示をクリア</button>
+  </section>
+
+  <!-- STEP 1: ベッドを選択 -->
+  <section class="card">
+    <h2>1. ベッドを選択</h2>
+
+    <label for="bedSelect">ベッド番号</label>
+    <select id="bedSelect">
+      <option value="">-- 選択してください --</option>
+    </select>
+    <p id="bedOrderSummary" class="hint"></p>
 
     <label for="orderedFlow">血液流量 指示値 (mL/min)</label>
     <input type="number" id="orderedFlow" inputmode="numeric" placeholder="例: 200">
@@ -222,6 +275,7 @@ th { background: #eef2f6; }
     <select id="orderedDialyzer">
       <option value="">-- 選択してください --</option>
     </select>
+    <p class="hint">ベッド選択で自動入力されますが、直前の指示変更等があれば、ここで直接修正してから照合してください。</p>
   </section>
 
   <!-- STEP 2: 血液流量の実測 -->
@@ -232,6 +286,7 @@ th { background: #eef2f6; }
     <button id="flowScanStopBtn" class="btn btn-secondary hidden">■ スキャン終了</button>
     <div id="flowVideoWrap" class="video-wrap hidden">
       <video id="flowVideo" class="live-video" playsinline muted autoplay></video>
+      <div class="scan-guide scan-guide-flow" data-label="数字をこの枠に合わせる"></div>
       <div id="flowLiveBadge" class="live-badge"></div>
     </div>
     <div id="flowScanUnsupported" class="hint hidden">
@@ -257,6 +312,7 @@ th { background: #eef2f6; }
     <button id="dialyzerScanStopBtn" class="btn btn-secondary hidden">■ スキャン終了</button>
     <div id="dialyzerVideoWrap" class="video-wrap hidden">
       <video id="dialyzerVideo" class="live-video" playsinline muted autoplay></video>
+      <div class="scan-guide scan-guide-dialyzer" data-label="型式をこの枠に合わせる"></div>
       <div id="dialyzerLiveBadge" class="live-badge"></div>
     </div>
     <div id="dialyzerScanUnsupported" class="hint hidden">
@@ -288,8 +344,8 @@ th { background: #eef2f6; }
       <div id="overallResult" class="result-overall"></div>
     </div>
 
-    <label for="checkNote">メモ（任意・個人情報は入力しないこと。例: ベッド番号のみ等）</label>
-    <input type="text" id="checkNote" placeholder="例: 3号機">
+    <label for="checkNote">メモ（任意・個人情報は入力しないこと）</label>
+    <input type="text" id="checkNote" placeholder="例: 特記事項があれば">
 
     <button id="saveHistoryBtn" class="btn hidden">この結果を履歴に記録</button>
   </section>
@@ -305,7 +361,7 @@ th { background: #eef2f6; }
       <table id="historyTable">
         <thead>
           <tr>
-            <th>日時</th><th>メモ</th>
+            <th>日時</th><th>ベッド</th><th>メモ</th>
             <th>流量指示</th><th>流量実測</th><th>流量判定</th>
             <th>型式指示</th><th>型式実測</th><th>型式判定</th>
             <th>総合</th>
@@ -427,6 +483,94 @@ function populateDialyzerSelects() {
 }
 
 /* ============================================================
+ * ベッド指示の事前登録（15床分）
+ * この端末のブラウザ内（localStorage）にのみ保存する。
+ * ============================================================ */
+const BED_COUNT = 15;
+const BED_ORDERS_KEY = "dialysisBedOrders";
+
+function loadBedOrders() {
+  try {
+    return JSON.parse(localStorage.getItem(BED_ORDERS_KEY)) || {};
+  } catch {
+    return {};
+  }
+}
+
+function saveBedOrdersToStorage(orders) {
+  localStorage.setItem(BED_ORDERS_KEY, JSON.stringify(orders));
+}
+
+function buildDialyzerOptionsHtml(selected) {
+  let html = `<option value="">-- 未選択 --</option>`;
+  DIALYZER_LIST.forEach((entry) => {
+    const sel = entry.model === selected ? " selected" : "";
+    html += `<option value="${entry.model}"${sel}>${entry.model}</option>`;
+  });
+  return html;
+}
+
+function populateBedOrderTable() {
+  const body = document.getElementById("bedOrderBody");
+  const orders = loadBedOrders();
+  body.innerHTML = "";
+  for (let bed = 1; bed <= BED_COUNT; bed++) {
+    const o = orders[bed] || {};
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>${bed}</td>
+      <td><input type="number" inputmode="numeric" class="bed-flow-input" data-bed="${bed}" value="${o.flow ?? ""}" placeholder="例: 200"></td>
+      <td><input type="number" inputmode="numeric" class="bed-tolerance-input" data-bed="${bed}" value="${o.tolerance ?? 0}" min="0"></td>
+      <td><select class="bed-dialyzer-input" data-bed="${bed}">${buildDialyzerOptionsHtml(o.dialyzer || "")}</select></td>
+    `;
+    body.appendChild(tr);
+  }
+}
+
+function saveBedOrdersFromTable() {
+  const orders = {};
+  for (let bed = 1; bed <= BED_COUNT; bed++) {
+    const flowEl = document.querySelector(`.bed-flow-input[data-bed="${bed}"]`);
+    const toleranceEl = document.querySelector(`.bed-tolerance-input[data-bed="${bed}"]`);
+    const dialyzerEl = document.querySelector(`.bed-dialyzer-input[data-bed="${bed}"]`);
+    const flow = flowEl.value;
+    const dialyzer = dialyzerEl.value;
+    if (flow === "" && !dialyzer) continue; // 未入力のベッドは保存しない
+    orders[bed] = {
+      flow: flow === "" ? null : parseFloat(flow),
+      tolerance: parseFloat(toleranceEl.value) || 0,
+      dialyzer: dialyzer || "",
+    };
+  }
+  saveBedOrdersToStorage(orders);
+  return orders;
+}
+
+function populateBedSelect() {
+  const sel = document.getElementById("bedSelect");
+  for (let bed = 1; bed <= BED_COUNT; bed++) {
+    const opt = document.createElement("option");
+    opt.value = String(bed);
+    opt.textContent = `ベッド ${bed}`;
+    sel.appendChild(opt);
+  }
+}
+
+function applyBedOrderToStep1(bed) {
+  const orders = loadBedOrders();
+  const summary = document.getElementById("bedOrderSummary");
+  const o = orders[bed];
+  if (!o) {
+    summary.textContent = `ベッド ${bed} の指示は未登録です。「0. 本日の指示登録」で登録するか、下欄に直接入力してください。`;
+    return;
+  }
+  document.getElementById("orderedFlow").value = o.flow ?? "";
+  document.getElementById("flowTolerance").value = o.tolerance ?? 0;
+  document.getElementById("orderedDialyzer").value = o.dialyzer ?? "";
+  summary.textContent = `ベッド ${bed} の登録済み指示を読み込みました（血流量 ${o.flow ?? "-"} mL/min／${o.dialyzer || "型式未登録"}）。`;
+}
+
+/* ============================================================
  * OCRワーカー（使い回すことで2回目以降の認識を高速化）
  * ============================================================ */
 let ocrWorkerPromise = null;
@@ -437,9 +581,12 @@ function getOcrWorker() {
   return ocrWorkerPromise;
 }
 
-async function recognizeWithWhitelist(file, whitelist) {
+async function recognizeImage(file, { whitelist, psm } = {}) {
   const worker = await getOcrWorker();
-  await worker.setParameters({ tessedit_char_whitelist: whitelist });
+  const params = {};
+  if (whitelist !== undefined) params.tessedit_char_whitelist = whitelist;
+  if (psm !== undefined) params.tessedit_pageseg_mode = psm;
+  await worker.setParameters(params);
   const { data } = await worker.recognize(file);
   return data.text || "";
 }
@@ -447,7 +594,7 @@ async function recognizeWithWhitelist(file, whitelist) {
 /* ============================================================
  * 撮影 → プレビュー表示 → OCR共通処理
  * ============================================================ */
-function wirePhotoCapture({ btnId, inputId, previewWrapId, previewImgId, statusId, onOcrDone, whitelist }) {
+function wirePhotoCapture({ btnId, inputId, previewWrapId, previewImgId, statusId, onOcrDone, whitelist, psm }) {
   const btn = document.getElementById(btnId);
   const input = document.getElementById(inputId);
   const previewWrap = document.getElementById(previewWrapId);
@@ -468,7 +615,7 @@ function wirePhotoCapture({ btnId, inputId, previewWrapId, previewImgId, statusI
     status.textContent = "文字認識中...(端末内で処理しています。外部には送信されません)";
 
     try {
-      const text = await recognizeWithWhitelist(file, whitelist);
+      const text = await recognizeImage(file, { whitelist, psm });
       status.textContent = "認識結果: " + text.trim().replace(/\s+/g, " ") + "（必ず目視で確認してください）";
       onOcrDone(text);
     } catch (err) {
@@ -515,7 +662,12 @@ function wireDialyzerCandidates(text) {
  * ============================================================ */
 const activeScanControllers = [];
 
-function wireLiveScan({ scanBtnId, stopBtnId, videoWrapId, videoId, badgeId, unsupportedId, whitelist, processReading }) {
+const SCAN_STABLE_THRESHOLD = 2; // 同じ読み取り結果が連続でこの回数出たら「確定」として採用する
+
+function wireLiveScan({
+  scanBtnId, stopBtnId, videoWrapId, videoId, badgeId, unsupportedId,
+  whitelist, psm, cropBox, extractKey, onStable,
+}) {
   const scanBtn = document.getElementById(scanBtnId);
   const stopBtn = document.getElementById(stopBtnId);
   const videoWrap = document.getElementById(videoWrapId);
@@ -531,6 +683,7 @@ function wireLiveScan({ scanBtnId, stopBtnId, videoWrapId, videoId, badgeId, uns
 
   const canvas = document.createElement("canvas");
   const state = { stream: null, scanning: false };
+  const stability = { lastKey: null, count: 0 };
 
   function stop() {
     state.scanning = false;
@@ -541,13 +694,21 @@ function wireLiveScan({ scanBtnId, stopBtnId, videoWrapId, videoId, badgeId, uns
     videoWrap.classList.add("hidden");
     stopBtn.classList.add("hidden");
     scanBtn.classList.remove("hidden");
+    stability.lastKey = null;
+    stability.count = 0;
   }
 
+  // 枠（cropBox、映像に対する割合）の中だけを切り出し、2倍に拡大してOCRへ渡す。
+  // 枠外のノイズ（他の数値表示や周辺の映り込み）を除外し、認識対象を絞ることでブレ・誤読を減らす。
   async function grabFrameBlob() {
-    canvas.width = video.videoWidth;
-    canvas.height = video.videoHeight;
-    if (!canvas.width || !canvas.height) return null;
-    canvas.getContext("2d").drawImage(video, 0, 0, canvas.width, canvas.height);
+    const vw = video.videoWidth, vh = video.videoHeight;
+    if (!vw || !vh) return null;
+    const box = cropBox || { left: 0, top: 0, width: 1, height: 1 };
+    const sx = vw * box.left, sy = vh * box.top, sw = vw * box.width, sh = vh * box.height;
+    const upscale = 2;
+    canvas.width = Math.round(sw * upscale);
+    canvas.height = Math.round(sh * upscale);
+    canvas.getContext("2d").drawImage(video, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
     return new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
   }
 
@@ -556,10 +717,24 @@ function wireLiveScan({ scanBtnId, stopBtnId, videoWrapId, videoId, badgeId, uns
       try {
         const blob = await grabFrameBlob();
         if (blob) {
-          const text = await recognizeWithWhitelist(blob, whitelist);
-          const result = processReading(text) || { display: "読み取り中...", matched: null };
-          badge.textContent = result.display;
-          badge.className = "live-badge " + (result.matched === true ? "ok" : result.matched === false ? "ng" : "");
+          const text = await recognizeImage(blob, { whitelist, psm });
+          const key = extractKey(text);
+
+          if (key && key === stability.lastKey) {
+            stability.count++;
+          } else {
+            stability.lastKey = key;
+            stability.count = key ? 1 : 0;
+          }
+
+          if (key && stability.count >= SCAN_STABLE_THRESHOLD) {
+            const result = onStable(key, text) || { display: "認識値: " + key, matched: null };
+            badge.textContent = result.display;
+            badge.className = "live-badge " + (result.matched === true ? "ok" : result.matched === false ? "ng" : "");
+          } else {
+            badge.textContent = "読み取り中...（枠の中に合わせてください）";
+            badge.className = "live-badge";
+          }
         }
       } catch (err) {
         badge.textContent = "認識エラー（再試行中）";
@@ -572,15 +747,21 @@ function wireLiveScan({ scanBtnId, stopBtnId, videoWrapId, videoId, badgeId, uns
   scanBtn.addEventListener("click", async () => {
     try {
       state.stream = await navigator.mediaDevices.getUserMedia({
-        video: { facingMode: { ideal: "environment" } },
+        video: {
+          facingMode: { ideal: "environment" },
+          width: { ideal: 1920 },
+          height: { ideal: 1080 },
+        },
         audio: false,
       });
       video.srcObject = state.stream;
       videoWrap.classList.remove("hidden");
       scanBtn.classList.add("hidden");
       stopBtn.classList.remove("hidden");
-      badge.textContent = "読み取り中...";
+      badge.textContent = "読み取り中...（枠の中に合わせてください）";
       badge.className = "live-badge";
+      stability.lastKey = null;
+      stability.count = 0;
       state.scanning = true;
       loop();
     } catch (err) {
@@ -649,6 +830,7 @@ function runCheck() {
 
   return {
     timestamp: new Date().toISOString(),
+    bed: document.getElementById("bedSelect").value || "",
     note: document.getElementById("checkNote").value || "",
     orderedFlow, measuredFlow, flowMatch,
     orderedDialyzer, measuredDialyzer, dialyzerMatch,
@@ -685,6 +867,7 @@ function renderHistory() {
       const dt = new Date(rec.timestamp);
       tr.innerHTML = `
         <td>${dt.toLocaleString("ja-JP")}</td>
+        <td>${rec.bed ? "ベッド" + escapeHtml(rec.bed) : ""}</td>
         <td>${escapeHtml(rec.note)}</td>
         <td>${rec.orderedFlow}</td>
         <td>${rec.measuredFlow}</td>
@@ -706,9 +889,10 @@ function escapeHtml(s) {
 
 function exportCsv() {
   const list = loadHistory();
-  const header = ["日時","メモ","流量指示","流量実測","流量判定","型式指示","型式実測","型式判定","総合"];
+  const header = ["日時","ベッド","メモ","流量指示","流量実測","流量判定","型式指示","型式実測","型式判定","総合"];
   const rows = list.map((rec) => [
     new Date(rec.timestamp).toLocaleString("ja-JP"),
+    rec.bed ? "ベッド" + rec.bed : "",
     rec.note,
     rec.orderedFlow, rec.measuredFlow, rec.flowMatch ? "一致" : "不一致",
     rec.orderedDialyzer, rec.measuredDialyzer, rec.dialyzerMatch ? "一致" : "不一致",
@@ -731,7 +915,28 @@ function exportCsv() {
  * ============================================================ */
 document.addEventListener("DOMContentLoaded", () => {
   populateDialyzerSelects();
+  populateBedOrderTable();
+  populateBedSelect();
   renderHistory();
+
+  document.getElementById("saveBedOrdersBtn").addEventListener("click", () => {
+    saveBedOrdersFromTable();
+    alert("15床分の指示を登録しました。");
+    const bedSelect = document.getElementById("bedSelect");
+    if (bedSelect.value) applyBedOrderToStep1(bedSelect.value);
+  });
+
+  document.getElementById("clearBedOrdersBtn").addEventListener("click", () => {
+    if (confirm("登録済みの全ベッドの指示を削除します。よろしいですか？")) {
+      saveBedOrdersToStorage({});
+      populateBedOrderTable();
+      document.getElementById("bedOrderSummary").textContent = "";
+    }
+  });
+
+  document.getElementById("bedSelect").addEventListener("change", (e) => {
+    if (e.target.value) applyBedOrderToStep1(e.target.value);
+  });
 
   wirePhotoCapture({
     btnId: "flowPhotoBtn",
@@ -740,6 +945,7 @@ document.addEventListener("DOMContentLoaded", () => {
     previewImgId: "flowPhotoPreview",
     statusId: "flowOcrStatus",
     whitelist: "0123456789",
+    psm: "7", // 1行のテキストとして読む（デジタル数字表示向け）
     onOcrDone: (text) => {
       const num = extractFlowNumber(text);
       if (num) document.getElementById("measuredFlow").value = num;
@@ -753,6 +959,7 @@ document.addEventListener("DOMContentLoaded", () => {
     previewImgId: "dialyzerPhotoPreview",
     statusId: "dialyzerOcrStatus",
     whitelist: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-.",
+    psm: "6", // ラベル印字（複数行になりうる）向けの均一ブロックモード
     onOcrDone: (text) => {
       wireDialyzerCandidates(text);
     },
@@ -766,9 +973,11 @@ document.addEventListener("DOMContentLoaded", () => {
     badgeId: "flowLiveBadge",
     unsupportedId: "flowScanUnsupported",
     whitelist: "0123456789",
-    processReading: (text) => {
-      const num = extractFlowNumber(text);
-      if (!num) return { display: "読み取り中...", matched: null };
+    psm: "7",
+    // 枠（映像中央、横80%×縦30%）だけを切り出してOCRする。血流量以外の数値表示を拾わないようにする。
+    cropBox: { left: 0.10, top: 0.35, width: 0.80, height: 0.30 },
+    extractKey: (text) => extractFlowNumber(text) || null,
+    onStable: (num) => {
       document.getElementById("measuredFlow").value = num;
       const ordered = parseFloat(document.getElementById("orderedFlow").value);
       const tolerance = parseFloat(document.getElementById("flowTolerance").value) || 0;
@@ -788,12 +997,14 @@ document.addEventListener("DOMContentLoaded", () => {
     badgeId: "dialyzerLiveBadge",
     unsupportedId: "dialyzerScanUnsupported",
     whitelist: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-.",
-    processReading: (text) => {
+    psm: "6",
+    cropBox: { left: 0.08, top: 0.30, width: 0.84, height: 0.40 },
+    extractKey: (text) => {
       const matches = bestDialyzerMatches(text, 1);
-      if (matches.length === 0 || matches[0].dist > 4) {
-        return { display: "読み取り中...", matched: null };
-      }
-      const best = matches[0].model;
+      if (matches.length === 0 || matches[0].dist > 4) return null;
+      return matches[0].model;
+    },
+    onStable: (best, text) => {
       document.getElementById("measuredDialyzer").value = best;
       wireDialyzerCandidates(text);
       const ordered = document.getElementById("orderedDialyzer").value;
