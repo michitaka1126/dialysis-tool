@@ -180,7 +180,7 @@ select {
   white-space: nowrap;
 }
 .scan-guide-flow { left: 10%; top: 35%; width: 80%; height: 30%; }
-.scan-guide-dialyzer { left: 15%; top: 42%; width: 70%; height: 16%; }
+.scan-guide-dialyzer { left: 10%; top: 34%; width: 80%; height: 32%; }
 
 .candidates {
   margin-top: 8px;
@@ -331,7 +331,7 @@ th { background: #eef2f6; }
     <button id="dialyzerScanStopBtn" class="btn btn-secondary hidden">■ スキャン終了</button>
     <div id="dialyzerVideoWrap" class="video-wrap hidden">
       <video id="dialyzerVideo" class="live-video" playsinline muted autoplay></video>
-      <div class="scan-guide scan-guide-dialyzer" data-label="型式の文字だけを枠いっぱいに"></div>
+      <div class="scan-guide scan-guide-dialyzer" data-label="型番(例: VPS-18HA)を枠内に"></div>
       <div id="dialyzerLiveBadge" class="live-badge"></div>
     </div>
     <div id="dialyzerRawText" class="ocr-raw"></div>
@@ -1094,7 +1094,9 @@ document.addEventListener("DOMContentLoaded", () => {
     cropPreviewId: "dialyzerCropPreview",
     whitelist: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-.",
     psm: "6", // PSM 7(1行モード)は実機で全く読めなくなったため6に戻した
-    cropBox: { left: 0.15, top: 0.42, width: 0.70, height: 0.16 },
+    // ブランド名(Vitabrane等)と型番の行が両方入る高さにしてある。照合は読み取り文全体から
+    // 型番を探すトークン方式なので、余計な文字が写り込んでも型番さえ枠内にあれば拾える。
+    cropBox: { left: 0.10, top: 0.34, width: 0.80, height: 0.32 },
     preprocess: "alternate",
     upscale: 3,
     // 完全一致に至らなくても、読み取るたびに近い候補チップを更新し、タップで採用できるようにする
