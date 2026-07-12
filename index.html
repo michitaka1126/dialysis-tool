@@ -171,7 +171,7 @@ select {
   white-space: nowrap;
 }
 .scan-guide-flow { left: 10%; top: 35%; width: 80%; height: 30%; }
-.scan-guide-dialyzer { left: 8%; top: 30%; width: 84%; height: 40%; }
+.scan-guide-dialyzer { left: 15%; top: 37%; width: 70%; height: 26%; }
 
 .candidates {
   margin-top: 8px;
@@ -322,7 +322,7 @@ th { background: #eef2f6; }
     <button id="dialyzerScanStopBtn" class="btn btn-secondary hidden">■ スキャン終了</button>
     <div id="dialyzerVideoWrap" class="video-wrap hidden">
       <video id="dialyzerVideo" class="live-video" playsinline muted autoplay></video>
-      <div class="scan-guide scan-guide-dialyzer" data-label="型式をこの枠に合わせる"></div>
+      <div class="scan-guide scan-guide-dialyzer" data-label="型式の文字だけを枠いっぱいに"></div>
       <div id="dialyzerLiveBadge" class="live-badge"></div>
     </div>
     <div id="dialyzerRawText" class="ocr-raw"></div>
@@ -729,7 +729,7 @@ function binarizeCanvas(canvas) {
 
 function wireLiveScan({
   scanBtnId, stopBtnId, videoWrapId, videoId, badgeId, unsupportedId, rawTextId,
-  whitelist, psm, cropBox, preprocess, extractKey, onStable, onEveryRead,
+  whitelist, psm, cropBox, preprocess, upscale, extractKey, onStable, onEveryRead,
 }) {
   const scanBtn = document.getElementById(scanBtnId);
   const stopBtn = document.getElementById(stopBtnId);
@@ -746,7 +746,7 @@ function wireLiveScan({
   }
 
   const canvas = document.createElement("canvas");
-  const state = { stream: null, scanning: false };
+  const state = { stream: null, scanning: false, frameCount: 0 };
   const stability = { lastKey: null, count: 0 };
 
   function stop() {
@@ -769,11 +769,16 @@ function wireLiveScan({
     if (!vw || !vh) return null;
     const box = cropBox || { left: 0, top: 0, width: 1, height: 1 };
     const sx = vw * box.left, sy = vh * box.top, sw = vw * box.width, sh = vh * box.height;
-    const upscale = 2;
-    canvas.width = Math.round(sw * upscale);
-    canvas.height = Math.round(sh * upscale);
+    const scale = upscale || 2;
+    canvas.width = Math.round(sw * scale);
+    canvas.height = Math.round(sh * scale);
     canvas.getContext("2d").drawImage(video, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
-    if (preprocess === "binarize") binarizeCanvas(canvas);
+    state.frameCount++;
+    // "binarize"=毎回二値化 / "alternate"=1回ごとに二値化あり・なしを切り替え
+    // （照明条件によって二値化が有利にも不利にもなるため、両方を試して読めた方を採用する）
+    if (preprocess === "binarize" || (preprocess === "alternate" && state.frameCount % 2 === 0)) {
+      binarizeCanvas(canvas);
+    }
     return new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
   }
 
@@ -790,11 +795,13 @@ function wireLiveScan({
           if (onEveryRead) onEveryRead(text);
           const key = extractKey(text);
 
+          // 読めなかったフレーム(null)ではカウントをリセットしない
+          // （二値化あり/なしを交互に試すため、片方だけ読める状況でも確定できるように）
           if (key && key === stability.lastKey) {
             stability.count++;
-          } else {
+          } else if (key) {
             stability.lastKey = key;
-            stability.count = key ? 1 : 0;
+            stability.count = 1;
           }
 
           if (key && stability.count >= SCAN_STABLE_THRESHOLD) {
@@ -1069,9 +1076,10 @@ document.addEventListener("DOMContentLoaded", () => {
     unsupportedId: "dialyzerScanUnsupported",
     rawTextId: "dialyzerRawText",
     whitelist: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-.",
-    psm: "6",
-    cropBox: { left: 0.08, top: 0.30, width: 0.84, height: 0.40 },
-    preprocess: "binarize",
+    psm: "7", // 枠を型式1行分に絞ったので1行モードで読む
+    cropBox: { left: 0.15, top: 0.37, width: 0.70, height: 0.26 },
+    preprocess: "alternate",
+    upscale: 3,
     // 完全一致に至らなくても、読み取るたびに近い候補チップを更新し、タップで採用できるようにする
     onEveryRead: (text) => {
       if (normalize(text)) wireDialyzerCandidates(text);
