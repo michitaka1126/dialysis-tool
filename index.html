@@ -115,6 +115,15 @@ select {
   color: #555;
 }
 
+.ocr-raw {
+  margin-top: 6px;
+  font-size: 0.75rem;
+  color: #666;
+  font-family: Consolas, Menlo, monospace;
+  word-break: break-all;
+  min-height: 1.2em;
+}
+
 .video-wrap {
   position: relative;
   margin-top: 10px;
@@ -289,6 +298,7 @@ th { background: #eef2f6; }
       <div class="scan-guide scan-guide-flow" data-label="数字をこの枠に合わせる"></div>
       <div id="flowLiveBadge" class="live-badge"></div>
     </div>
+    <div id="flowRawText" class="ocr-raw"></div>
     <div id="flowScanUnsupported" class="hint hidden">
       この開き方ではライブスキャンが使えません（HTTPS環境が必要です）。下の「静止画で撮影」または手入力をご利用ください。
     </div>
@@ -315,6 +325,8 @@ th { background: #eef2f6; }
       <div class="scan-guide scan-guide-dialyzer" data-label="型式をこの枠に合わせる"></div>
       <div id="dialyzerLiveBadge" class="live-badge"></div>
     </div>
+    <div id="dialyzerRawText" class="ocr-raw"></div>
+    <p class="hint">自動確定しない場合でも、下に出る「近い候補」をタップすれば実測型式に入力できます。</p>
     <div id="dialyzerScanUnsupported" class="hint hidden">
       この開き方ではライブスキャンが使えません（HTTPS環境が必要です）。下の「静止画で撮影」または手入力をご利用ください。
     </div>
@@ -681,9 +693,43 @@ const activeScanControllers = [];
 
 const SCAN_STABLE_THRESHOLD = 2; // 同じ読み取り結果が連続でこの回数出たら「確定」として採用する
 
+// 大津の方法による白黒二値化。光沢のあるラベル・曲面の印字はそのままだとOCRが読みづらいため、
+// 切り出した画像を白黒くっきりに変換してから渡す（ダイアライザー型式スキャンで使用）。
+function binarizeCanvas(canvas) {
+  const ctx = canvas.getContext("2d");
+  const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  const d = img.data;
+  const hist = new Array(256).fill(0);
+  const grays = new Uint8Array(d.length / 4);
+  for (let i = 0; i < grays.length; i++) {
+    const g = Math.round(0.299 * d[i * 4] + 0.587 * d[i * 4 + 1] + 0.114 * d[i * 4 + 2]);
+    grays[i] = g;
+    hist[g]++;
+  }
+  const total = grays.length;
+  let sumAll = 0;
+  for (let t = 0; t < 256; t++) sumAll += t * hist[t];
+  let sumB = 0, wB = 0, maxVar = -1, threshold = 127;
+  for (let t = 0; t < 256; t++) {
+    wB += hist[t];
+    if (wB === 0) continue;
+    const wF = total - wB;
+    if (wF === 0) break;
+    sumB += t * hist[t];
+    const mB = sumB / wB, mF = (sumAll - sumB) / wF;
+    const between = wB * wF * (mB - mF) * (mB - mF);
+    if (between > maxVar) { maxVar = between; threshold = t; }
+  }
+  for (let i = 0; i < grays.length; i++) {
+    const v = grays[i] > threshold ? 255 : 0;
+    d[i * 4] = v; d[i * 4 + 1] = v; d[i * 4 + 2] = v;
+  }
+  ctx.putImageData(img, 0, 0);
+}
+
 function wireLiveScan({
-  scanBtnId, stopBtnId, videoWrapId, videoId, badgeId, unsupportedId,
-  whitelist, psm, cropBox, extractKey, onStable,
+  scanBtnId, stopBtnId, videoWrapId, videoId, badgeId, unsupportedId, rawTextId,
+  whitelist, psm, cropBox, preprocess, extractKey, onStable, onEveryRead,
 }) {
   const scanBtn = document.getElementById(scanBtnId);
   const stopBtn = document.getElementById(stopBtnId);
@@ -691,6 +737,7 @@ function wireLiveScan({
   const video = document.getElementById(videoId);
   const badge = document.getElementById(badgeId);
   const unsupported = document.getElementById(unsupportedId);
+  const rawText = rawTextId ? document.getElementById(rawTextId) : null;
 
   if (!navigator.mediaDevices || !navigator.mediaDevices.getUserMedia || !window.isSecureContext) {
     scanBtn.classList.add("hidden");
@@ -726,6 +773,7 @@ function wireLiveScan({
     canvas.width = Math.round(sw * upscale);
     canvas.height = Math.round(sh * upscale);
     canvas.getContext("2d").drawImage(video, sx, sy, sw, sh, 0, 0, canvas.width, canvas.height);
+    if (preprocess === "binarize") binarizeCanvas(canvas);
     return new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
   }
 
@@ -735,6 +783,11 @@ function wireLiveScan({
         const blob = await grabFrameBlob();
         if (blob) {
           const text = await recognizeImage(blob, { whitelist, psm });
+          if (rawText) {
+            const t = text.trim().replace(/\s+/g, " ");
+            rawText.textContent = t ? "認識テキスト: " + t.slice(0, 80) : "認識テキスト: (なし)";
+          }
+          if (onEveryRead) onEveryRead(text);
           const key = extractKey(text);
 
           if (key && key === stability.lastKey) {
@@ -989,6 +1042,7 @@ document.addEventListener("DOMContentLoaded", () => {
     videoId: "flowVideo",
     badgeId: "flowLiveBadge",
     unsupportedId: "flowScanUnsupported",
+    rawTextId: "flowRawText",
     whitelist: "0123456789",
     psm: "7",
     // 枠（映像中央、横80%×縦30%）だけを切り出してOCRする。血流量以外の数値表示を拾わないようにする。
@@ -1013,9 +1067,15 @@ document.addEventListener("DOMContentLoaded", () => {
     videoId: "dialyzerVideo",
     badgeId: "dialyzerLiveBadge",
     unsupportedId: "dialyzerScanUnsupported",
+    rawTextId: "dialyzerRawText",
     whitelist: "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-.",
     psm: "6",
     cropBox: { left: 0.08, top: 0.30, width: 0.84, height: 0.40 },
+    preprocess: "binarize",
+    // 完全一致に至らなくても、読み取るたびに近い候補チップを更新し、タップで採用できるようにする
+    onEveryRead: (text) => {
+      if (normalize(text)) wireDialyzerCandidates(text);
+    },
     extractKey: (text) => {
       // 院内リストには1文字違いの型式が多い（VPS-15HA/18HA等）ため、
       // ライブスキャンの自動確定は完全一致（dist 0）のみ。惜しい読み取りは確定させない。
